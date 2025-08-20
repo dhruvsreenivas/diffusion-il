@@ -3,19 +3,20 @@ DPPO fine-tuning.
 
 """
 
+import logging
+import math
 import os
 import pickle
+
 import einops
 import numpy as np
 import torch
-import logging
 import wandb
-import math
 
 log = logging.getLogger(__name__)
-from util.timer import Timer
 from agent.finetune.train_ppo_agent import TrainPPOAgent
 from util.scheduler import CosineAnnealingWarmupRestarts
+from util.timer import Timer
 
 
 class TrainPPODiffusionAgent(TrainPPOAgent):
@@ -480,4 +481,5 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                     run_results[-1]["train_episode_reward"] = avg_episode_reward
                 with open(self.result_path, "wb") as f:
                     pickle.dump(run_results, f)
+
             self.itr += 1

@@ -41,9 +41,10 @@ env:
       reset_within_step: True
 
 wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
   project: robomimic-${env_name}-finetune
   run: ${now:%H-%M-%S}_${name}
+  mode: online
+  dir: /network/scratch/d/dhruv.sreenivas/diffusion-milo
 
 train:
   n_train_itr: 81

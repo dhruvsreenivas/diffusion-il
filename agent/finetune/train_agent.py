@@ -3,14 +3,15 @@ Parent fine-tuning agent class.
 
 """
 
-import os
-import numpy as np
-from omegaconf import OmegaConf
-import torch
-import hydra
 import logging
-import wandb
+import os
 import random
+
+import hydra
+import numpy as np
+import torch
+import wandb
+from omegaconf import OmegaConf
 
 log = logging.getLogger(__name__)
 from env.gym_utils import make_async
@@ -20,9 +21,11 @@ class TrainAgent:
 
     def __init__(self, cfg):
         super().__init__()
+
         self.cfg = cfg
         self.device = cfg.device
         self.seed = cfg.get("seed", 42)
+
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
@@ -31,10 +34,11 @@ class TrainAgent:
         self.use_wandb = cfg.wandb is not None
         if cfg.wandb is not None:
             wandb.init(
-                entity=cfg.wandb.entity,
                 project=cfg.wandb.project,
                 name=cfg.wandb.run,
                 config=OmegaConf.to_container(cfg, resolve=True),
+                mode=cfg.wandb.mode,
+                dir=cfg.wandb.dir,
             )
 
         # Make vectorized env
@@ -61,6 +65,7 @@ class TrainAgent:
                 [self.seed + i for i in range(cfg.env.n_envs)]
             )  # otherwise parallel envs might have the same initial states!
             # isaacgym environments do not need seeding
+
         self.n_envs = cfg.env.n_envs
         self.n_cond_step = cfg.cond_steps
         self.obs_dim = cfg.obs_dim
@@ -102,6 +107,7 @@ class TrainAgent:
         self.result_path = os.path.join(self.logdir, "result.pkl")
         os.makedirs(self.render_dir, exist_ok=True)
         os.makedirs(self.checkpoint_dir, exist_ok=True)
+
         self.save_trajs = cfg.train.get("save_trajs", False)
         self.log_freq = cfg.train.get("log_freq", 1)
         self.save_model_freq = cfg.train.save_model_freq
@@ -129,6 +135,7 @@ class TrainAgent:
             "itr": self.itr,
             "model": self.model.state_dict(),
         }  # right now `model` includes weights for `network`, `actor`, `actor_ft`. Weights for `network` is redundant, and we can use `actor` weights as the base policy (earlier denoising steps) and `actor_ft` weights as the fine-tuned policy (later denoising steps) during evaluation.
+
         savepath = os.path.join(self.checkpoint_dir, f"state_{self.itr}.pt")
         torch.save(data, savepath)
         log.info(f"Saved model to {savepath}")
@@ -148,6 +155,7 @@ class TrainAgent:
             options_venv = [
                 {k: v for k, v in kwargs.items()} for _ in range(self.n_envs)
             ]
+
         obs_venv = self.venv.reset_arg(options_list=options_venv)
         # convert to OrderedDict if obs_venv is a list of dict
         if isinstance(obs_venv, list):
@@ -155,11 +163,13 @@ class TrainAgent:
                 key: np.stack([obs_venv[i][key] for i in range(self.n_envs)])
                 for key in obs_venv[0].keys()
             }
+
         if verbose:
             for index in range(self.n_envs):
                 logging.info(
                     f"<-- Reset environment {index} with options {options_venv[index]}"
                 )
+
         return obs_venv
 
     def reset_env(self, env_ind, verbose=False):
@@ -167,4 +177,5 @@ class TrainAgent:
         obs = self.venv.reset_one_arg(env_ind=env_ind, options=task)
         if verbose:
             logging.info(f"<-- Reset environment {env_ind} with task {task}")
+
         return obs

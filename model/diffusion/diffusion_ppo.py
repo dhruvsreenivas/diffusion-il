@@ -1,5 +1,5 @@
 """
-DPPO: Diffusion Policy Policy Optimization. 
+DPPO: Diffusion Policy Policy Optimization.
 
 K: number of denoising steps
 To: observation sequence length
@@ -12,10 +12,11 @@ H, W: image height and width
 
 """
 
-from typing import Optional
-import torch
 import logging
 import math
+from typing import Optional
+
+import torch
 
 log = logging.getLogger(__name__)
 from model.diffusion.diffusion_vpg import VPGDiffusion
@@ -74,8 +75,8 @@ class PPODiffusion(VPGDiffusion):
             state: (B, To, Do)
             rgb: (B, To, C, H, W)
         chains: (B, K+1, Ta, Da)
-        returns: (B, )
-        values: (B, )
+        returns: (B,)
+        values: (B,)
         advantages: (B,)
         oldlogprobs: (B, K, Ta, Da)
         use_bc_loss: whether to add BC regularization loss
@@ -187,6 +188,7 @@ class PPODiffusion(VPGDiffusion):
             v_loss = 0.5 * v_loss_max.mean()
         else:
             v_loss = 0.5 * ((newvalues - returns) ** 2).mean()
+
         return (
             pg_loss,
             entropy_loss,

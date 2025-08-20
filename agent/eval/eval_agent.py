@@ -3,12 +3,13 @@ Parent eval agent class.
 
 """
 
+import logging
 import os
+import random
+
+import hydra
 import numpy as np
 import torch
-import hydra
-import logging
-import random
 
 log = logging.getLogger(__name__)
 from env.gym_utils import make_async
@@ -80,6 +81,7 @@ class EvalAgent:
         self.render_dir = os.path.join(self.logdir, "render")
         self.result_path = os.path.join(self.logdir, "result.npz")
         os.makedirs(self.render_dir, exist_ok=True)
+
         self.n_render = cfg.render_num
         self.render_video = cfg.env.get("save_video", False)
         assert self.n_render <= self.n_envs, "n_render must be <= n_envs"
@@ -87,8 +89,7 @@ class EvalAgent:
             self.n_render <= 0 and self.render_video
         ), "Need to set n_render > 0 if saving video"
         self.traj_plotter = (
-            hydra.utils.instantiate(cfg.plotter)
-            if "plotter" in cfg else None
+            hydra.utils.instantiate(cfg.plotter) if "plotter" in cfg else None
         )
 
     def run(self):
@@ -118,4 +119,5 @@ class EvalAgent:
         obs = self.venv.reset_one_arg(env_ind=env_ind, options=task)
         if verbose:
             logging.info(f"<-- Reset environment {env_ind} with task {task}")
+
         return obs

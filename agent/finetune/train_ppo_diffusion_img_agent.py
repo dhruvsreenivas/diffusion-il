@@ -3,19 +3,20 @@ DPPO fine-tuning for pixel observations.
 
 """
 
+import logging
+import math
 import os
 import pickle
+
 import einops
 import numpy as np
 import torch
-import logging
 import wandb
-import math
 
 log = logging.getLogger(__name__)
-from util.timer import Timer
 from agent.finetune.train_ppo_diffusion_agent import TrainPPODiffusionAgent
 from model.common.modules import RandomShiftsAug
+from util.timer import Timer
 
 
 class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
@@ -99,6 +100,7 @@ class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
                         .to(self.device)
                         for key in self.obs_dims
                     }  # batch each type of obs and put into dict
+
                     samples = self.model(
                         cond=cond,
                         deterministic=eval_mode,
@@ -110,6 +112,7 @@ class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
                     chains_venv = (
                         samples.chains.cpu().numpy()
                     )  # n_env x denoising x horizon x act
+
                 action_venv = output_venv[:, : self.act_steps]
 
                 # Apply multi-step action
@@ -119,6 +122,7 @@ class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
                 done_venv = terminated_venv | truncated_venv
                 for k in obs_trajs:
                     obs_trajs[k][step] = prev_obs_venv[k]
+
                 chains_trajs[step] = chains_venv
                 reward_trajs[step] = reward_venv
                 terminated_trajs[step] = terminated_venv
@@ -139,6 +143,7 @@ class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
                     end = env_steps[i + 1]
                     if end - start > 1:
                         episodes_start_end.append((env_ind, start, end - 1))
+
             if len(episodes_start_end) > 0:
                 reward_trajs_split = [
                     reward_trajs[start : end + 1, env_ind]
@@ -293,7 +298,9 @@ class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
                     torch.tensor(values_trajs, device=self.device).float().reshape(-1)
                 )
                 advantages_k = (
-                    torch.tensor(advantages_trajs, device=self.device).float().reshape(-1)
+                    torch.tensor(advantages_trajs, device=self.device)
+                    .float()
+                    .reshape(-1)
                 )
                 logprobs_k = torch.tensor(logprobs_trajs, device=self.device).float()
 
@@ -467,4 +474,5 @@ class TrainPPOImgDiffusionAgent(TrainPPODiffusionAgent):
                     run_results[-1]["train_episode_reward"] = avg_episode_reward
                 with open(self.result_path, "wb") as f:
                     pickle.dump(run_results, f)
+
             self.itr += 1

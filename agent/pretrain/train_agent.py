@@ -3,15 +3,16 @@ Parent pre-training agent class.
 
 """
 
+import logging
 import os
 import random
-import numpy as np
-from omegaconf import OmegaConf
-import torch
-import hydra
-import logging
-import wandb
 from copy import deepcopy
+
+import hydra
+import numpy as np
+import torch
+import wandb
+from omegaconf import OmegaConf
 
 log = logging.getLogger(__name__)
 from util.scheduler import CosineAnnealingWarmupRestarts
@@ -69,10 +70,11 @@ class PreTrainAgent:
         self.use_wandb = cfg.wandb is not None
         if cfg.wandb is not None:
             wandb.init(
-                entity=cfg.wandb.entity,
                 project=cfg.wandb.project,
                 name=cfg.wandb.run,
                 config=OmegaConf.to_container(cfg, resolve=True),
+                mode=cfg.wandb.mode,
+                dir=cfg.wandb.dir,
             )
 
         # Build model
@@ -165,4 +167,6 @@ class PreTrainAgent:
 
         self.epoch = data["epoch"]
         self.model.load_state_dict(data["model"])
+        self.ema_model.load_state_dict(data["ema"])
+        self.ema_model.load_state_dict(data["ema"])
         self.ema_model.load_state_dict(data["ema"])

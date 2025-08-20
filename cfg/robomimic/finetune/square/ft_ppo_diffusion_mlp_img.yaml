@@ -55,9 +55,10 @@ shape_meta:
     shape: [7]
 
 wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
-  project: robomimic-${env_name}-finetune
-  run: ${now:%H-%M-%S}_${name}
+  project: dppo-robomimic-img
+  run: ${name}_${now:%H-%M-%S}
+  mode: online
+  dir: /network/scratch/d/dhruv.sreenivas/diffusion-milo
 
 train:
   n_train_itr: 301

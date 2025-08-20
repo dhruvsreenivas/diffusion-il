@@ -3,20 +3,20 @@ Launcher for all experiments. Download pre-training data, normalization statisti
 
 """
 
+import logging
+import math
 import os
 import sys
-import pretty_errors
-import logging
 
-import math
-import hydra
-from omegaconf import OmegaConf
 import gdown
+import hydra
+import pretty_errors
 from download_url import (
+    get_checkpoint_download_url,
     get_dataset_download_url,
     get_normalization_download_url,
-    get_checkpoint_download_url,
 )
+from omegaconf import OmegaConf
 
 # allows arbitrary python code execution in configs using the ${eval:''} resolver
 OmegaConf.register_new_resolver("eval", eval, replace=True)

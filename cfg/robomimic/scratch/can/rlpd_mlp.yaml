@@ -41,9 +41,9 @@ env:
       reset_within_step: True
 
 wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
   project: rlpd-${env_name}
   run: ${now:%H-%M-%S}_${name}
+  mode: online
 
 train:
   n_train_itr: 1000000

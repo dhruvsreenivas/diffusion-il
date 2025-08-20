@@ -20,9 +20,10 @@ cond_steps: 1
 img_cond_steps: 1
 
 wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
   project: robomimic-${env}-pretrain
   run: ${now:%H-%M-%S}_${name}
+  mode: online
+  dir: /network/scratch/d/dhruv.sreenivas/diffusion-milo
 
 shape_meta:
   obs:

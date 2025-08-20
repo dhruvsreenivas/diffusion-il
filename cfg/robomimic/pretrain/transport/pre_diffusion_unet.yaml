@@ -19,9 +19,10 @@ horizon_steps: 16
 cond_steps: 1
 
 wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
   project: robomimic-${env}-pretrain
   run: ${now:%H-%M-%S}_${name}
+  mode: online
+  dir: /network/scratch/d/dhruv.sreenivas/diffusion-milo
 
 train:
   n_epochs: 3000

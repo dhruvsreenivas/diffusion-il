@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 try:
     from collections.abc import Iterable
@@ -70,8 +70,9 @@ def make_async(
     """
 
     if env_type == "furniture":
-        from furniture_bench.envs.observation import DEFAULT_STATE_OBS
         from furniture_bench.envs.furniture_rl_sim_env import FurnitureRLSimEnv
+        from furniture_bench.envs.observation import DEFAULT_STATE_OBS
+
         from env.gym_utils.wrapper.furniture import FurnitureRLSimEnvMultiStepWrapper
 
         env = FurnitureRLSimEnv(
@@ -108,6 +109,7 @@ def make_async(
 
     # avoid import error due incompatible gym versions
     from gym import spaces
+
     from env.gym_utils.async_vector_env import AsyncVectorEnv
     from env.gym_utils.sync_vector_env import SyncVectorEnv
     from env.gym_utils.wrapper import wrapper_dict
@@ -173,12 +175,14 @@ def make_async(
         if wrappers is not None:
             for wrapper, args in wrappers.items():
                 env = wrapper_dict[wrapper](env, **args)
+
         return env
 
     def dummy_env_fn():
         """TODO(allenzren): does this dummy env allow camera obs for other envs besides robomimic?"""
         import gym
         import numpy as np
+
         from env.gym_utils.wrapper.multi_step import MultiStep
 
         # Avoid importing or using env in the main process
@@ -229,3 +233,34 @@ def make_async(
         if asynchronous
         else SyncVectorEnv(env_fns)
     )
+
+
+if __name__ == "__main__":
+    from omegaconf import OmegaConf
+
+    cfg_path = os.path.expanduser(
+        "~/diffusion-il/cfg/robomimic/finetune/can/ft_ppo_diffusion_mlp_img.yaml"
+    )
+    cfg = OmegaConf.load(cfg_path)
+
+    env_type = cfg.env.get("env_type", None)
+    venv = make_async(
+        cfg.env.name,
+        env_type=env_type,
+        num_envs=cfg.env.n_envs,
+        asynchronous=True,
+        max_episode_steps=cfg.env.max_episode_steps,
+        wrappers=cfg.env.get("wrappers", None),
+        robomimic_env_cfg_path=cfg.get("robomimic_env_cfg_path", None),
+        shape_meta=cfg.get("shape_meta", None),
+        use_image_obs=cfg.env.get("use_image_obs", False),
+        render=cfg.env.get("render", False),
+        render_offscreen=cfg.env.get("save_video", False),
+        obs_dim=cfg.obs_dim,
+        action_dim=cfg.action_dim,
+        **cfg.env.specific if "specific" in cfg.env else {},
+    )
+
+    obs = venv.reset()
+    for k, v in obs.items():
+        print(f"{k}: {v.shape}")

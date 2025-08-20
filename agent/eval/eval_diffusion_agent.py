@@ -3,14 +3,15 @@ Evaluate pre-trained/DPPO-fine-tuned diffusion policy.
 
 """
 
+import logging
 import os
+
 import numpy as np
 import torch
-import logging
 
 log = logging.getLogger(__name__)
-from util.timer import Timer
 from agent.eval.eval_agent import EvalAgent
+from util.timer import Timer
 
 
 class EvalDiffusionAgent(EvalAgent):
