@@ -56,6 +56,7 @@ class Discriminator(nn.Module):
             # flatten history
             state = cond["state"].view(B, -1)
         else:
+            B = len(cond)
             state = cond
 
         action = action.view(B, -1)
@@ -72,8 +73,6 @@ class ViTDiscriminator(Discriminator):
         self,
         backbone,
         cond_dim,
-        action_dim,
-        action_steps=1,
         img_cond_steps=1,
         spatial_emb=128,
         dropout=0,
@@ -128,7 +127,7 @@ class ViTDiscriminator(Discriminator):
         TODO long term: more flexible handling of cond
         """
 
-        B, T_rgb, _, H, W = cond["rgb"].shape
+        B, T_rgb, C, H, W = cond["rgb"].shape
 
         # flatten history
         state = cond["state"].view(B, -1)

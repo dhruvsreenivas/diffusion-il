@@ -15,6 +15,7 @@ import wandb
 
 log = logging.getLogger(__name__)
 from agent.imitation.train_gail_diffusion_agent import TrainGAILDiffusionAgent
+from agent.pretrain.train_agent import batch_to_device
 from model.common.modules import RandomShiftsAug
 from util.timer import Timer
 
@@ -180,29 +181,69 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
                 log.info("[WARNING] No episode completed within the iteration!")
 
             # Update discriminator
+            # shapes:
+            # - obs_trajs: {rgb: [n_steps, n_envs, n_cond_steps, 3, 96, 96], state: [n_steps, n_envs, n_cond_steps, obs_dim]}
+            # - action_trajs: [n_steps, n_envs, horizon_steps, action_dim]
+
+            # With images, this will be very large and won't all fit on GPU, so we will have to split up into batches and sum the losses.
+            # This is done in a memory-efficient way via gradient accumulation -- we `backward()` each minibatch discriminator loss
+            # so the total gradient after accumulation is the gradient if we just summed the losses.
             obs = {
-                k: torch.from_numpy(v).float().to(self.device).view(-1, *v.shape[-2:])
+                k: einops.rearrange(v, "s e ... -> (s e) ...")
                 for k, v in obs_trajs.items()
             }
-            actions = (
-                torch.from_numpy(actions_trajs)
-                .float()
-                .to(self.device)
-                .view(-1, self.horizon_steps, self.action_dim)
-            )
-            expert_actions, expert_obs = next(self.expert_dataloader_iter)
+            actions = actions_trajs.reshape((-1, self.horizon_steps, self.action_dim))
 
-            base_disc_loss, grad_pen = self.model.discriminator_loss(
-                obs, actions, expert_obs, expert_actions
-            )
-            disc_loss = base_disc_loss + self.grad_pen_coef * grad_pen
+            # set number of splits
+            n_batches = max(1, actions.shape[0] // self.expert_batch_size)
 
-            self.discriminator_optimizer.zero_grad()
-            disc_loss.backward()
+            base_disc_loss = 0.0
+            grad_pen = 0.0
+            for b_idx in range(n_batches):
+                # get the batch associated with this index.
+                start = b_idx * self.expert_batch_size
+                end = (b_idx + 1) * self.expert_batch_size
+
+                obs_b = {
+                    k: torch.from_numpy(v[start:end]).float().to(self.device)
+                    for k, v in obs.items()
+                }
+                actions_b = torch.from_numpy(actions[start:end]).float().to(self.device)
+
+                # get a new expert batch of the same size for this particular batch.
+                expert_batch = next(self.expert_dataloader_iter)
+                if self.expert_dataset.device == "cpu":
+                    expert_batch = batch_to_device(expert_batch)
+                expert_actions, expert_obs = expert_batch
+
+                base_disc_loss, grad_pen = self.model.discriminator_loss(
+                    obs_b, actions_b, expert_obs, expert_actions
+                )
+                disc_loss = base_disc_loss + self.grad_pen_coef * grad_pen
+                disc_loss /= n_batches  # so that total sum/grad is equal to if we did a full average over all samples
+                disc_loss.backward()
+
+            # only after we accumulate over all batch steps do we do the update.
             self.discriminator_optimizer.step()
+            self.discriminator_optimizer.zero_grad()
 
             # Override rewards with discriminator rewards.
-            disc_rewards = self.model.get_reward(obs, actions).cpu().numpy()
+            disc_rewards = []
+            for b_idx in range(n_batches):
+                # get the batch associated with this index.
+                start = b_idx * self.expert_batch_size
+                end = (b_idx + 1) * self.expert_batch_size
+
+                obs_b = {
+                    k: torch.from_numpy(v[start:end]).float().to(self.device)
+                    for k, v in obs.items()
+                }
+                actions_b = torch.from_numpy(actions[start:end]).float().to(self.device)
+
+                disc_rewards_b = self.model.get_reward(obs_b, actions_b).cpu().numpy()
+                disc_rewards.append(disc_rewards_b)
+
+            disc_rewards = np.concatenate(disc_rewards, axis=0)
             disc_rewards = disc_rewards.reshape(*reward_trajs.shape)
             reward_trajs = disc_rewards
 
@@ -490,6 +531,9 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
                                 "pg loss": pg_loss,
                                 "value loss": v_loss,
                                 "bc loss": bc_loss,
+                                "total disc loss": disc_loss,
+                                "base disc loss": base_disc_loss,
+                                "grad penalty": grad_pen,
                                 "eta": eta,
                                 "approx kl": approx_kl,
                                 "ratio": ratio,

@@ -84,6 +84,11 @@ class ImitationAgent:
         # Batch size for gradient update
         self.batch_size: int = cfg.train.batch_size
 
+        # Expert batch size for discriminator update.
+        self.expert_batch_size: int = cfg.train.get(
+            "expert_batch_size", cfg.env.n_envs * cfg.train.n_steps
+        )
+
         # Build model and load checkpoint
         self.model = hydra.utils.instantiate(cfg.model)
 
@@ -99,6 +104,13 @@ class ImitationAgent:
             else cfg.env.best_reward_threshold_for_success
         )
         self.max_grad_norm = cfg.train.get("max_grad_norm", None)
+
+        self.logdir = cfg.logdir
+        self.render_dir = os.path.join(self.logdir, "render")
+        self.checkpoint_dir = os.path.join(self.logdir, "checkpoint")
+        self.result_path = os.path.join(self.logdir, "result.pkl")
+        os.makedirs(self.render_dir, exist_ok=True)
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         self.save_trajs = cfg.train.get("save_trajs", False)
         self.log_freq = cfg.train.get("log_freq", 1)
@@ -120,7 +132,7 @@ class ImitationAgent:
         self.expert_dataset = hydra.utils.instantiate(cfg.expert_dataset)
         self.expert_dataloader = torch.utils.data.DataLoader(
             self.expert_dataset,
-            batch_size=self.batch_size,
+            batch_size=self.expert_batch_size,
             num_workers=4 if self.expert_dataset.device == "cpu" else 0,
             shuffle=True,
             pin_memory=True if self.expert_dataset.device == "cpu" else False,

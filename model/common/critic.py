@@ -3,13 +3,14 @@ Critic networks.
 
 """
 
-from typing import Union
-import torch
-import einops
 from copy import deepcopy
+from typing import Union
+
+import einops
+import torch
 
 from model.common.mlp import MLP, ResidualMLP
-from model.common.modules import SpatialEmb, RandomShiftsAug
+from model.common.modules import RandomShiftsAug, SpatialEmb
 
 
 class CriticObs(torch.nn.Module):
@@ -50,6 +51,7 @@ class CriticObs(torch.nn.Module):
             state = cond["state"].view(B, -1)
         else:
             state = cond
+
         q1 = self.Q1(state)
         return q1
 

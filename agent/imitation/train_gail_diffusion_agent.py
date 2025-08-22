@@ -204,8 +204,13 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                 log.info("[WARNING] No episode completed within the iteration!")
 
             # Update discriminator
+            # shapes:
+            # - obs_trajs: {state: [n_steps, n_envs, n_cond_steps, obs_dim]}
+            # - action_trajs: [n_steps, n_envs, horizon_steps, action_dim]
             obs = {
-                k: torch.from_numpy(v).float().to(self.device).view(-1, *v.shape[-2:])
+                k: einops.rearrange(
+                    torch.from_numpy(v).float().to(self.device), "s e ... -> (s e) ..."
+                )
                 for k, v in obs_trajs.items()
             }
             actions = (
@@ -401,7 +406,9 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                         self.critic_optimizer.zero_grad()
                         if self.learn_eta:
                             self.eta_optimizer.zero_grad()
+
                         loss.backward()
+
                         if self.itr >= self.n_critic_warmup_itr:
                             if self.max_grad_norm is not None:
                                 torch.nn.utils.clip_grad_norm_(
@@ -410,6 +417,7 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                             self.actor_optimizer.step()
                             if self.learn_eta and batch % self.eta_update_interval == 0:
                                 self.eta_optimizer.step()
+
                         self.critic_optimizer.step()
                         log.info(
                             f"approx_kl: {approx_kl}, update_epoch: {update_epoch}, num_batch: {num_batch}"
@@ -470,6 +478,7 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                 run_results[-1]["chains_trajs"] = chains_trajs
                 run_results[-1]["disc_reward_trajs"] = reward_trajs
                 run_results[-1]["true_reward_trajs"] = true_reward_trajs
+
             if self.itr % self.log_freq == 0:
                 time = timer()
                 run_results[-1]["time"] = time

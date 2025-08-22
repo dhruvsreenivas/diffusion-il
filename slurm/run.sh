@@ -2,7 +2,7 @@
 #SBATCH --partition=long
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
-#SBATCH --mem=35G
+#SBATCH --mem=50G
 #SBATCH --time=60:00:00
 #SBATCH --requeue
 #SBATCH -o /network/scratch/d/dhruv.sreenivas/diffusion-milo/job_logs/output/slurm-%j.out

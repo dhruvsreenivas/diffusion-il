@@ -45,14 +45,22 @@ def main(cfg: OmegaConf):
     OmegaConf.resolve(cfg)
 
     # For pre-training: download dataset if needed
-    if "train_dataset_path" in cfg and not os.path.exists(cfg.train_dataset_path):
+    if (
+        "train_dataset_path" in cfg
+        and cfg.train_dataset_path is not None
+        and not os.path.exists(cfg.train_dataset_path)
+    ):
         download_url = get_dataset_download_url(cfg)
         download_target = os.path.dirname(cfg.train_dataset_path)
         log.info(f"Downloading dataset from {download_url} to {download_target}")
         gdown.download_folder(url=download_url, output=download_target)
 
     # For for-tuning: download normalization if needed
-    if "normalization_path" in cfg and not os.path.exists(cfg.normalization_path):
+    if (
+        "normalization_path" in cfg
+        and cfg.normalization_path is not None
+        and not os.path.exists(cfg.normalization_path)
+    ):
         download_url = get_normalization_download_url(cfg)
         download_target = cfg.normalization_path
         dir_name = os.path.dirname(download_target)
@@ -64,7 +72,11 @@ def main(cfg: OmegaConf):
         gdown.download(url=download_url, output=download_target, fuzzy=True)
 
     # For for-tuning: download checkpoint if needed
-    if "base_policy_path" in cfg and not os.path.exists(cfg.base_policy_path):
+    if (
+        "base_policy_path" in cfg
+        and cfg.base_policy_path is not None
+        and not os.path.exists(cfg.base_policy_path)
+    ):
         download_url = get_checkpoint_download_url(cfg)
         if download_url is None:
             raise ValueError(

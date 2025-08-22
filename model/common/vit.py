@@ -3,13 +3,14 @@ ViT image encoder implementation from IBRL, https://github.com/hengyuan-hu/ibrl
 
 """
 
+import math
 from dataclasses import dataclass
 from typing import List
+
 import einops
 import torch
 from torch import nn
 from torch.nn.init import trunc_normal_
-import math
 
 
 @dataclass
@@ -32,6 +33,7 @@ class VitEncoder(nn.Module):
         num_channel=3,
         img_h=96,
         img_w=96,
+        use_flash_attn=True,
     ):
         super().__init__()
         self.obs_shape = obs_shape
@@ -45,6 +47,7 @@ class VitEncoder(nn.Module):
             num_channel=num_channel,
             img_h=img_h,
             img_w=img_w,
+            use_flash_attn=use_flash_attn,
         )
         self.img_h = img_h
         self.img_w = img_w
@@ -100,13 +103,15 @@ class PatchEmbed2(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_dim, num_head):
+    def __init__(self, embed_dim, num_head, use_flash_attn=True):
         super().__init__()
         assert embed_dim % num_head == 0
 
         self.num_head = num_head
         self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim)
         self.out_proj = nn.Linear(embed_dim, embed_dim)
+
+        self.use_flash_attn = use_flash_attn
 
     def forward(self, x, attn_mask):
         """
@@ -116,21 +121,32 @@ class MultiHeadAttention(nn.Module):
         q, k, v = einops.rearrange(
             qkv, "b t (k h d) -> b k h t d", k=3, h=self.num_head
         ).unbind(1)
+
         # force flash/mem-eff attention, it will raise error if flash cannot be applied
-        with torch.backends.cuda.sdp_kernel(enable_math=False):
+        ctx = (
+            torch.backends.cuda.sdp_kernel(enable_math=False)
+            if self.use_flash_attn
+            else torch.backends.cuda.sdp_kernel(
+                enable_flash=False, enable_math=True, enable_mem_efficient=False
+            )
+        )
+        with ctx:
             attn_v = torch.nn.functional.scaled_dot_product_attention(
                 q, k, v, dropout_p=0.0, attn_mask=attn_mask
             )
+
         attn_v = einops.rearrange(attn_v, "b h t d -> b t (h d)")
         return self.out_proj(attn_v)
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, embed_dim, num_head, dropout):
+    def __init__(self, embed_dim, num_head, dropout, use_flash_attn=True):
         super().__init__()
 
         self.layer_norm1 = nn.LayerNorm(embed_dim)
-        self.mha = MultiHeadAttention(embed_dim, num_head)
+        self.mha = MultiHeadAttention(
+            embed_dim, num_head, use_flash_attn=use_flash_attn
+        )
 
         self.layer_norm2 = nn.LayerNorm(embed_dim)
         self.linear1 = nn.Linear(embed_dim, 4 * embed_dim)
@@ -158,6 +174,7 @@ class MinVit(nn.Module):
         num_channel=3,
         img_h=96,
         img_w=96,
+        use_flash_attn=True,
     ):
         super().__init__()
 
@@ -183,7 +200,10 @@ class MinVit(nn.Module):
             torch.zeros(1, self.patch_embed.num_patch, embed_dim)
         )
         layers = [
-            TransformerLayer(embed_dim, num_head, dropout=0) for _ in range(depth)
+            TransformerLayer(
+                embed_dim, num_head, dropout=0, use_flash_attn=use_flash_attn
+            )
+            for _ in range(depth)
         ]
 
         self.net = nn.Sequential(*layers)

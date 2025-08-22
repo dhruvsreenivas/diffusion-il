@@ -31,7 +31,7 @@ class GAILDiffusion(PPODiffusion):
         super().__init__(**kwargs)
 
         # Discriminator module.
-        self.discriminator = discriminator
+        self.discriminator = discriminator.to(self.device)
 
         # Discriminator loss type.
         self.divergence = divergence
@@ -91,10 +91,10 @@ class GAILDiffusion(PPODiffusion):
             grad_actions = actions[policy_inds]
         elif eB > pB:
             # choose random expert samples to do gradient penalty over.
-            policy_inds = torch.randint(0, eB, (pB,))
+            expert_inds = torch.randint(0, eB, (pB,))
 
-            grad_expert_obs = {k: v[policy_inds] for k, v in expert_obs.items()}
-            grad_expert_actions = expert_actions[policy_inds]
+            grad_expert_obs = {k: v[expert_inds] for k, v in expert_obs.items()}
+            grad_expert_actions = expert_actions[expert_inds]
             grad_obs = obs
             grad_actions = actions
         else:
@@ -138,4 +138,4 @@ class GAILDiffusion(PPODiffusion):
         else:
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
-        return rewards
+        return rewards.squeeze(-1)
