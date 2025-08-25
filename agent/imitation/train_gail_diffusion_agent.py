@@ -233,6 +233,12 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
             # Override rewards with discriminator rewards.
             disc_rewards = self.model.get_reward(obs, actions).cpu().numpy()
             disc_rewards = disc_rewards.reshape(*reward_trajs.shape)
+            if self.normalize_reward:
+                mean_disc_reward = disc_rewards.mean()
+                std_disc_reward = disc_rewards.std()
+                disc_rewards = (disc_rewards - mean_disc_reward) / (
+                    std_disc_reward + 1e-8
+                )
 
             true_reward_trajs = reward_trajs
             reward_trajs = disc_rewards

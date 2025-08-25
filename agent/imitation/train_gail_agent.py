@@ -107,6 +107,9 @@ class TrainGAILAgent(ImitationAgent):
         # Discriminator gradient penalty coefficient.
         self.grad_pen_coef: float = cfg.train.get("grad_pen_coef", 10.0)
 
+        # Whether to normalize the reward.
+        self.normalize_reward: bool = cfg.train.get("normalize_reward", False)
+
     def reset_actor_optimizer(self):
         """Not used anywhere currently"""
         new_optimizer = torch.optim.AdamW(

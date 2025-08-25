@@ -116,6 +116,7 @@ train:
 
   expert_batch_size: 500
   grad_pen_coef: 10.0
+  normalize_reward: False
 
 model:
   _target_: model.diffusion.diffusion_gail.GAILDiffusion
