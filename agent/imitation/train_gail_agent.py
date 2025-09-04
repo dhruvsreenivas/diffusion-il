@@ -110,6 +110,9 @@ class TrainGAILAgent(ImitationAgent):
         # Whether to normalize the reward.
         self.normalize_reward: bool = cfg.train.get("normalize_reward", False)
 
+        # How many discriminator updates we're doing at any iteration.
+        self.num_disc_updates: int = cfg.train.get("num_disc_updates", 1)
+
     def reset_actor_optimizer(self):
         """Not used anywhere currently"""
         new_optimizer = torch.optim.AdamW(

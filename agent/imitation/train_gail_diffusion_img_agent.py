@@ -180,7 +180,7 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
                 success_rate = 0
                 log.info("[WARNING] No episode completed within the iteration!")
 
-            # Update discriminator
+            # ========================= Discriminator update =========================
             # shapes:
             # - obs_trajs: {rgb: [n_steps, n_envs, n_cond_steps, 3, 96, 96], state: [n_steps, n_envs, n_cond_steps, obs_dim]}
             # - action_trajs: [n_steps, n_envs, horizon_steps, action_dim]
@@ -197,35 +197,49 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
             # set number of splits
             n_batches = max(1, actions.shape[0] // self.expert_batch_size)
 
-            base_disc_loss = 0.0
-            grad_pen = 0.0
-            for b_idx in range(n_batches):
-                # get the batch associated with this index.
-                start = b_idx * self.expert_batch_size
-                end = (b_idx + 1) * self.expert_batch_size
+            for _ in range(self.num_disc_updates):
+                for b_idx in range(n_batches):
+                    # get the batch associated with this index.
+                    start = b_idx * self.expert_batch_size
+                    end = (b_idx + 1) * self.expert_batch_size
 
-                obs_b = {
-                    k: torch.from_numpy(v[start:end]).float().to(self.device)
-                    for k, v in obs.items()
-                }
-                actions_b = torch.from_numpy(actions[start:end]).float().to(self.device)
+                    obs_b = {
+                        k: torch.from_numpy(v[start:end]).float().to(self.device)
+                        for k, v in obs.items()
+                    }
+                    actions_b = (
+                        torch.from_numpy(actions[start:end]).float().to(self.device)
+                    )
 
-                # get a new expert batch of the same size for this particular batch.
-                expert_batch = next(self.expert_dataloader_iter)
-                if self.expert_dataset.device == "cpu":
-                    expert_batch = batch_to_device(expert_batch)
-                expert_actions, expert_obs = expert_batch
+                    # get a new expert batch of the same size for this particular batch.
+                    try:
+                        expert_batch = next(self.expert_dataloader_iter)
+                    except StopIteration:
+                        self.expert_dataloader = torch.utils.data.DataLoader(
+                            self.expert_dataset,
+                            batch_size=self.expert_batch_size,
+                            num_workers=4 if self.expert_dataset.device == "cpu" else 0,
+                            shuffle=True,
+                            pin_memory=(
+                                True if self.expert_dataset.device == "cpu" else False
+                            ),
+                        )
+                        expert_batch = next(self.expert_dataloader_iter)
 
-                base_disc_loss, grad_pen = self.model.discriminator_loss(
-                    obs_b, actions_b, expert_obs, expert_actions
-                )
-                disc_loss = base_disc_loss + self.grad_pen_coef * grad_pen
-                disc_loss /= n_batches  # so that total sum/grad is equal to if we did a full average over all samples
-                disc_loss.backward()
+                    if self.expert_dataset.device == "cpu":
+                        expert_batch = batch_to_device(expert_batch, device=self.device)
+                    expert_actions, expert_obs = expert_batch
 
-            # only after we accumulate over all batch steps do we do the update.
-            self.discriminator_optimizer.step()
-            self.discriminator_optimizer.zero_grad()
+                    base_disc_loss, grad_pen = self.model.discriminator_loss(
+                        obs_b, actions_b, expert_obs, expert_actions
+                    )
+                    disc_loss = base_disc_loss + self.grad_pen_coef * grad_pen
+                    disc_loss /= n_batches  # so that total sum/grad is equal to if we did a full average over all samples
+                    disc_loss.backward()
+
+                # only after we accumulate over all batch steps do we do the update.
+                self.discriminator_optimizer.step()
+                self.discriminator_optimizer.zero_grad()
 
             # Override rewards with discriminator rewards.
             disc_rewards = []
@@ -245,14 +259,17 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
 
             disc_rewards = np.concatenate(disc_rewards, axis=0)
             disc_rewards = disc_rewards.reshape(*reward_trajs.shape)
+
+            mean_disc_reward = disc_rewards.mean()
+            std_disc_reward = disc_rewards.std()
             if self.normalize_reward:
-                mean_disc_reward = disc_rewards.mean()
-                std_disc_reward = disc_rewards.std()
                 disc_rewards = (disc_rewards - mean_disc_reward) / (
                     std_disc_reward + 1e-8
                 )
 
             reward_trajs = disc_rewards
+
+            # ========================= PPO update =========================
 
             # Update models
             if not eval_mode:
@@ -553,6 +570,8 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
                                 "critic lr": self.critic_optimizer.param_groups[0][
                                     "lr"
                                 ],
+                                "mean disc reward": mean_disc_reward,
+                                "std disc reward": std_disc_reward,
                             },
                             step=self.itr,
                             commit=True,

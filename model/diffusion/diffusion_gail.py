@@ -26,6 +26,7 @@ class GAILDiffusion(PPODiffusion):
         self,
         discriminator,
         divergence="wass",
+        max_discriminator_diff=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -35,6 +36,9 @@ class GAILDiffusion(PPODiffusion):
 
         # Discriminator loss type.
         self.divergence = divergence
+
+        # Max discriminator difference when computing loss.
+        self.max_discriminator_diff = max_discriminator_diff
 
     def discriminator_loss(
         self,
@@ -77,7 +81,11 @@ class GAILDiffusion(PPODiffusion):
         elif self.divergence == "rkl":
             disc_loss = torch.mean(torch.exp(-expert_d)) + torch.mean(policy_d)
         elif self.divergence == "wass":
-            disc_loss = expert_d.mean() - policy_d.mean()
+            disc_loss = torch.mean(policy_d) - torch.mean(expert_d)
+            if self.max_discriminator_diff is not None:
+                disc_loss = torch.clamp(
+                    disc_loss, -self.max_discriminator_diff, self.max_discriminator_diff
+                )
         else:
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
@@ -134,8 +142,8 @@ class GAILDiffusion(PPODiffusion):
         elif self.divergence == "rkl":
             rewards = torch.sigmoid(d)
         elif self.divergence == "wass":
-            rewards = -d
+            rewards = d
         else:
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
-        return rewards.squeeze(-1)
+        return rewards

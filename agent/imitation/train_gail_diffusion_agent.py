@@ -15,6 +15,7 @@ import wandb
 
 log = logging.getLogger(__name__)
 from agent.imitation.train_gail_agent import TrainGAILAgent
+from agent.pretrain.train_agent import batch_to_device
 from util.scheduler import CosineAnnealingWarmupRestarts
 from util.timer import Timer
 
@@ -219,23 +220,41 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                 .to(self.device)
                 .view(-1, self.horizon_steps, self.action_dim)
             )
-            expert_actions, expert_obs = next(self.expert_dataloader_iter)
+            for _ in range(self.num_disc_updates):
+                try:
+                    expert_batch = next(self.expert_dataloader_iter)
+                except StopIteration:
+                    self.expert_dataloader = torch.utils.data.DataLoader(
+                        self.expert_dataset,
+                        batch_size=self.expert_batch_size,
+                        num_workers=4 if self.expert_dataset.device == "cpu" else 0,
+                        shuffle=True,
+                        pin_memory=(
+                            True if self.expert_dataset.device == "cpu" else False
+                        ),
+                    )
+                    expert_batch = next(self.expert_dataloader_iter)
 
-            base_disc_loss, grad_pen = self.model.discriminator_loss(
-                obs, actions, expert_obs, expert_actions
-            )
-            disc_loss = base_disc_loss + self.grad_pen_coef * grad_pen
+                if self.expert_dataset.device == "cpu":
+                    expert_batch = batch_to_device(expert_batch, device=self.device)
+                expert_actions, expert_obs = expert_batch
 
-            self.discriminator_optimizer.zero_grad()
-            disc_loss.backward()
-            self.discriminator_optimizer.step()
+                base_disc_loss, grad_pen = self.model.discriminator_loss(
+                    obs, actions, expert_obs, expert_actions
+                )
+                disc_loss = base_disc_loss + self.grad_pen_coef * grad_pen
+
+                self.discriminator_optimizer.zero_grad()
+                disc_loss.backward()
+                self.discriminator_optimizer.step()
 
             # Override rewards with discriminator rewards.
             disc_rewards = self.model.get_reward(obs, actions).cpu().numpy()
             disc_rewards = disc_rewards.reshape(*reward_trajs.shape)
+
+            mean_disc_reward = disc_rewards.mean()
+            std_disc_reward = disc_rewards.std()
             if self.normalize_reward:
-                mean_disc_reward = disc_rewards.mean()
-                std_disc_reward = disc_rewards.std()
                 disc_rewards = (disc_rewards - mean_disc_reward) / (
                     std_disc_reward + 1e-8
                 )
@@ -530,6 +549,8 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                                 "critic lr": self.critic_optimizer.param_groups[0][
                                     "lr"
                                 ],
+                                "mean disc reward": mean_disc_reward,
+                                "std disc reward": std_disc_reward,
                             },
                             step=self.itr,
                             commit=True,
