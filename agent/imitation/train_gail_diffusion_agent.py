@@ -252,6 +252,13 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
             disc_rewards = self.model.get_reward(obs, actions).cpu().numpy()
             disc_rewards = disc_rewards.reshape(*reward_trajs.shape)
 
+            # Compute divergence.
+            estimated_divergence = (
+                self.model.get_divergence(obs, actions, expert_obs, expert_actions)
+                .cpu()
+                .numpy()
+            )
+
             mean_disc_reward = disc_rewards.mean()
             std_disc_reward = disc_rewards.std()
             if self.normalize_reward:
@@ -551,6 +558,8 @@ class TrainGAILDiffusionAgent(TrainGAILAgent):
                                 ],
                                 "mean disc reward": mean_disc_reward,
                                 "std disc reward": std_disc_reward,
+                                # for JS it will go to 1 by default
+                                "estimated divergence": estimated_divergence or 1.0,
                             },
                             step=self.itr,
                             commit=True,

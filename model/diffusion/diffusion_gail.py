@@ -94,7 +94,7 @@ class GAILDiffusion(PPODiffusion):
             # DeepMimic code: https://github.com/xbpeng/DeepMimic/blob/master/learning/amp_agent.py#L251-L257
             expert_loss = 0.5 * (expert_d - 1) ** 2
             policy_loss = 0.5 * (policy_d + 1) ** 2
-            disc_loss = expert_loss.mean() + policy_loss.mean()
+            disc_loss = 0.5 * (expert_loss.mean() + policy_loss.mean())
         else:
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
@@ -158,3 +158,37 @@ class GAILDiffusion(PPODiffusion):
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
         return rewards
+
+    @torch.no_grad()
+    def get_divergence(self, obs, actions, expert_obs, expert_actions):
+        """Computes the divergence for logging.
+
+        obs: dict with key state/rgb; more recent obs at the end
+            state: (pB, To, Do)
+            rgb: (pB, To, C, H, W)
+        actions: (pB, Ta, Da)
+        expert_obs: dict with key state/rgb; more recent obs at the end
+            state: (eB, To, Do)
+            rgb: (eB, To, C, H, W)
+        expert_actions: (eB, Ta, Da)
+        """
+
+        # Get discriminator outputs for expert and online data.
+        policy_d = self.discriminator(obs, actions)  # [pB, 1]
+        expert_d = self.discriminator(expert_obs, expert_actions)  # [eB, 1]
+
+        if self.divergence == "js":
+            # Not implemented.
+            divergence = None
+        elif self.divergence == "rkl":
+            disc_out = torch.exp(-expert_d).mean()
+            policy_out = policy_d.mean()
+            divergence = disc_out + policy_out
+        elif self.divergence == "wass":
+            divergence = expert_d.mean() - policy_d.mean()
+        elif self.divergence == "least_squares":
+            divergence = (policy_d < 0).float().mean() + (expert_d > 0).float().mean()
+        else:
+            raise ValueError(f"Invalid divergence {self.divergence}.")
+
+        return divergence

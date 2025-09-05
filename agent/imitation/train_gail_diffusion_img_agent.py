@@ -269,6 +269,48 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
 
             reward_trajs = disc_rewards
 
+            # Compute estimated divergence.
+            estimated_divergences = []
+            for b_idx in range(n_batches):
+                # get the batch associated with this index.
+                start = b_idx * self.expert_batch_size
+                end = (b_idx + 1) * self.expert_batch_size
+
+                obs_b = {
+                    k: torch.from_numpy(v[start:end]).float().to(self.device)
+                    for k, v in obs.items()
+                }
+                actions_b = torch.from_numpy(actions[start:end]).float().to(self.device)
+
+                # get a new expert batch of the same size for this particular batch.
+                try:
+                    expert_batch = next(self.expert_dataloader_iter)
+                except StopIteration:
+                    self.expert_dataloader = torch.utils.data.DataLoader(
+                        self.expert_dataset,
+                        batch_size=self.expert_batch_size,
+                        num_workers=4 if self.expert_dataset.device == "cpu" else 0,
+                        shuffle=True,
+                        pin_memory=(
+                            True if self.expert_dataset.device == "cpu" else False
+                        ),
+                    )
+                    expert_batch = next(self.expert_dataloader_iter)
+
+                if self.expert_dataset.device == "cpu":
+                    expert_batch = batch_to_device(expert_batch, device=self.device)
+                expert_actions, expert_obs = expert_batch
+
+                divergences_b = self.model.get_divergence(
+                    obs_b, actions_b, expert_obs, expert_actions
+                )
+                estimated_divergences.append(divergences_b)
+
+            if self.model.divergence != "js":
+                estimated_divergence = np.array(estimated_divergences).mean()
+            else:
+                estimated_divergence = 1.0
+
             # ========================= PPO update =========================
 
             # Update models
@@ -572,6 +614,7 @@ class TrainGAILImgDiffusionAgent(TrainGAILDiffusionAgent):
                                 ],
                                 "mean disc reward": mean_disc_reward,
                                 "std disc reward": std_disc_reward,
+                                "estimated divergence": estimated_divergence,
                             },
                             step=self.itr,
                             commit=True,
