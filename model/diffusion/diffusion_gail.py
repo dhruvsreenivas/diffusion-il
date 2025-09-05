@@ -69,6 +69,7 @@ class GAILDiffusion(PPODiffusion):
 
         # Compute loss depending on type.
         if self.divergence == "js":
+            # Classic binary cross entropy loss.
             ones = torch.ones(eB, device=self.device)
             zeros = torch.zeros(pB, device=self.device)
             disc_label = torch.cat([ones, zeros], dim=0).unsqueeze(-1)  # [eB + pB, 1]
@@ -79,13 +80,21 @@ class GAILDiffusion(PPODiffusion):
             )
             disc_loss /= eB + pB // 2
         elif self.divergence == "rkl":
+            # Reverse KL divergence loss.
             disc_loss = torch.mean(torch.exp(-expert_d)) + torch.mean(policy_d)
         elif self.divergence == "wass":
+            # Wasserstein-1 distance loss.
             disc_loss = torch.mean(policy_d) - torch.mean(expert_d)
             if self.max_discriminator_diff is not None:
                 disc_loss = torch.clamp(
                     disc_loss, -self.max_discriminator_diff, self.max_discriminator_diff
                 )
+        elif self.divergence == "least_squares":
+            # Least squares loss from https://arxiv.org/pdf/2104.02180.
+            # DeepMimic code: https://github.com/xbpeng/DeepMimic/blob/master/learning/amp_agent.py#L251-L257
+            expert_loss = 0.5 * (expert_d - 1) ** 2
+            policy_loss = 0.5 * (policy_d + 1) ** 2
+            disc_loss = expert_loss.mean() + policy_loss.mean()
         else:
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
@@ -143,6 +152,8 @@ class GAILDiffusion(PPODiffusion):
             rewards = torch.sigmoid(d)
         elif self.divergence == "wass":
             rewards = d
+        elif self.divergence == "least_squares":
+            rewards = F.relu(1.0 - 0.25 * (d - 1.0) ** 2)
         else:
             raise ValueError(f"Invalid divergence {self.divergence}.")
 
